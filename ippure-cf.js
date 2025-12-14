@@ -1,6 +1,6 @@
 /*
  * ============================================
- *     IPPure Panel (Cloudflare Worker 版)
+ *     IPPure Panel
  * ============================================
  * 通过 CF Worker 中转，获取完整的 IPPure 数据
  * 包括：纯净度、Bot流量比、IP属性、风险等级等
@@ -11,9 +11,8 @@
 
 // ==================== 配置 ====================
 
-// 替换为你的 Worker 地址
 const CF_WORKER_URL = "https://ippure-proxy.snove999.workers.dev/api/ippure";
-
+const IP_CHECK_URL = "http://ip-api.com/json/?fields=query";  // 获取出口 IP
 const TIMEOUT = 15000;
 
 // ==================== 国旗映射 ====================
@@ -52,12 +51,12 @@ function getScoreText(score) {
   return "极差";
 }
 
-function getBgColor(score1, score2) {
-  const max = Math.max(score1 || 0, score2 || 0);
-  if (max <= 10) return "#4A90D9";
-  if (max <= 30) return "#67C23A";
-  if (max <= 50) return "#E6A23C";
-  if (max <= 70) return "#F56C6C";
+function getBgColor(score) {
+  if (score == null) return "#909399";
+  if (score <= 10) return "#4A90D9";
+  if (score <= 30) return "#67C23A";
+  if (score <= 50) return "#E6A23C";
+  if (score <= 70) return "#F56C6C";
   return "#909399";
 }
 
@@ -70,10 +69,70 @@ function getSelectedNode() {
   return null;
 }
 
+// ==================== HTTP 请求封装 ====================
+
+function httpGet(options) {
+  return new Promise((resolve, reject) => {
+    $httpClient.get(options, (error, response, data) => {
+      if (error) {
+        reject(new Error(error));
+      } else {
+        resolve({ response, data });
+      }
+    });
+  });
+}
+
+// ==================== 步骤 1: 获取出口 IP ====================
+
+async function getExitIP(nodeName) {
+  const options = {
+    url: IP_CHECK_URL,
+    timeout: TIMEOUT,
+    headers: {
+      "User-Agent": "curl/7.64.1"
+    }
+  };
+  
+  if (nodeName) {
+    options.node = nodeName;
+  }
+  
+  const { data } = await httpGet(options);
+  const json = JSON.parse(data);
+  
+  if (!json.query) {
+    throw new Error("无法获取出口 IP");
+  }
+  
+  return json.query;
+}
+
+// ==================== 步骤 2: 查询 IPPure ====================
+
+async function queryIPPure(ip) {
+  const options = {
+    url: `${CF_WORKER_URL}?ip=${encodeURIComponent(ip)}`,
+    timeout: TIMEOUT,
+    headers: {
+      "Accept": "application/json"
+    }
+  };
+  
+  const { data } = await httpGet(options);
+  const json = JSON.parse(data);
+  
+  if (!json.success) {
+    throw new Error(json.error || "查询失败");
+  }
+  
+  return json;
+}
+
 // ==================== 格式化输出 ====================
 
-function formatOutput(data, nodeName) {
-  const d = data.data;
+function formatOutput(result, nodeName) {
+  const d = result.data;
   
   const pureEmoji = getEmoji(d.fraudScore);
   const botEmoji = getEmoji(d.botRatio);
@@ -83,7 +142,7 @@ function formatOutput(data, nodeName) {
   const ipSourceEmoji = d.ipSource === "广播" ? "📡" : "🎯";
   
   const pureText = d.fraudScore != null ? `${d.fraudScore}%` : "N/A";
-  const botText = d.botRatio != null ? `${d.botRatio}%` : "N/A";
+  const botText = d.botRatio != null ? `${d.botRatio}%` : null;
   const humanText = d.humanRatio != null ? `${d.humanRatio}%` : null;
   
   const flag = getFlag(d.countryCode);
@@ -96,7 +155,6 @@ function formatOutput(data, nodeName) {
     ? `AS${d.asn} ${d.asOrganization || ""}`
     : (d.asOrganization || "未知");
   
-  // 构建内容
   const lines = [];
   
   if (nodeName) {
@@ -104,14 +162,20 @@ function formatOutput(data, nodeName) {
   }
   
   lines.push(
-    `📍 ${d.ip || data.ip || "N/A"}`,
+    `📍 ${result.ip}`,
     locationLine,
-    ``,
-    `【${pureEmoji}${botEmoji} ${d.ipAttr || "未知"} ${d.ipSource || "未知"}】`,
+    ``
+  );
+  
+  // 概览行
+  const attrText = d.ipAttr || "未知";
+  const sourceText = d.ipSource || "未知";
+  lines.push(
+    `【${pureEmoji}${botEmoji} ${attrText} ${sourceText}】`,
     `━━━━━━━━━━━━━━━`
   );
   
-  // 风险等级或纯净度
+  // 风险/纯净度
   if (d.riskLevel) {
     lines.push(`⚠️ 风险: ${pureText} ${d.riskLevel}`);
   } else {
@@ -119,33 +183,36 @@ function formatOutput(data, nodeName) {
   }
   
   // 人机流量比
-  if (humanText && d.botRatio != null) {
+  if (humanText && botText) {
     lines.push(`👤 人类: ${humanText} | 🤖 Bot: ${botText}`);
-  } else if (d.botRatio != null) {
+  } else if (botText) {
     lines.push(`🤖 Bot流量: ${botText}`);
   }
   
   lines.push(
-    `${ipTypeEmoji} IP属性: ${d.ipAttr || "未知"}`,
-    `${ipSourceEmoji} IP来源: ${d.ipSource || "未知"}`,
+    `${ipTypeEmoji} IP属性: ${attrText}`,
+    `${ipSourceEmoji} IP来源: ${sourceText}`,
     `━━━━━━━━━━━━━━━`,
-    `🌐 ISP: ${ispLine}`,
-    `⏱️ 时区: ${d.timezone || "N/A"}`
+    `🌐 ISP: ${ispLine}`
   );
   
-  // 数据来源标记
-  const sourceNote = [];
-  if (data.source?.api) sourceNote.push("API");
-  if (data.source?.web) sourceNote.push("Web");
-  if (sourceNote.length > 0) {
-    lines.push(``, `📡 数据源: ${sourceNote.join(" + ")}`);
+  if (d.timezone) {
+    lines.push(`⏱️ 时区: ${d.timezone}`);
   }
   
-  const bgColor = getBgColor(d.fraudScore, d.botRatio);
-  const titleSuffix = nodeName || d.ip || "N/A";
+  // 数据来源
+  const sources = [];
+  if (result.source?.api) sources.push("API");
+  if (result.source?.web) sources.push("Web");
+  if (sources.length > 0) {
+    lines.push(``, `📡 数据源: ${sources.join(" + ")}`);
+  }
+  
+  const bgColor = getBgColor(d.fraudScore);
+  const titleSuffix = nodeName || result.ip;
   
   return {
-    title: `IPPure | ${pureEmoji}${botEmoji} ${pureText} ${titleSuffix}`,
+    title: `IPPure | ${pureEmoji}${botText ? botEmoji : ""} ${pureText} ${titleSuffix}`,
     content: lines.join("\n"),
     backgroundColor: bgColor,
     icon: "network",
@@ -158,55 +225,31 @@ function formatOutput(data, nodeName) {
 (async () => {
   try {
     const nodeName = getSelectedNode();
-    console.log(`[IPPure-CF] 开始检测，节点: ${nodeName || "当前连接"}`);
+    console.log(`[IPPure] 开始检测，节点: ${nodeName || "当前连接"}`);
     
-    const options = {
-      url: CF_WORKER_URL,
-      timeout: TIMEOUT,
-      headers: {
-        "User-Agent": "Loon/3.2",
-        "Accept": "application/json"
-      }
-    };
+    // 步骤 1: 获取出口 IP
+    console.log("[IPPure] 步骤1: 获取出口 IP...");
+    const exitIP = await getExitIP(nodeName);
+    console.log(`[IPPure] 出口 IP: ${exitIP}`);
     
-    // 如果有指定节点，通过该节点发起请求
-    if (nodeName) {
-      options.node = nodeName;
-    }
+    // 步骤 2: 查询 IPPure
+    console.log("[IPPure] 步骤2: 查询 IPPure...");
+    const result = await queryIPPure(exitIP);
+    console.log("[IPPure] 查询完成");
     
-    const response = await new Promise((resolve, reject) => {
-      $httpClient.get(options, (error, resp, data) => {
-        if (error) {
-          reject(new Error(`请求失败: ${error}`));
-          return;
-        }
-        if (!data) {
-          reject(new Error("响应为空"));
-          return;
-        }
-        try {
-          resolve(JSON.parse(data));
-        } catch (e) {
-          reject(new Error(`JSON解析失败: ${e.message}`));
-        }
-      });
-    });
-    
-    if (!response.success) {
-      throw new Error(response.error || "Unknown error");
-    }
-    
-    const output = formatOutput(response, nodeName);
+    // 格式化输出
+    const output = formatOutput(result, nodeName);
     $done(output);
     
   } catch (error) {
-    console.error(`[IPPure-CF] Error: ${error.message}`);
+    console.error(`[IPPure] Error: ${error.message}`);
     $done({
       title: "IPPure | ❌ 检测失败",
-      content: `错误: ${error.message}\n\n请检查:\n1. Worker 地址是否正确\n2. 网络连接是否正常\n3. 节点是否可用`,
+      content: `错误: ${error.message}\n\n请检查:\n1. 网络连接是否正常\n2. 节点是否可用\n3. Worker 是否正常`,
       backgroundColor: "#909399",
       icon: "xmark.circle",
       "icon-color": "#F56C6C"
     });
   }
 })();
+
