@@ -10,13 +10,50 @@
  *   - 补充：https://ippure.com/ (网页解析，获取Bot流量比)
  * 
  * 作者：snove999
- * 版本：4.0.0
+ * 版本：4.1.0
  * 
- * Loon 配置：
- * [Script]
- * generic script-path=ippure-panel.js, tag=IPPure, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
+ * 插件参数：
+ *   - fetchWebData: 是否获取网页数据（Bot流量比）
+ *   - showTimezone: 是否显示时区
+ *   - showISP: 是否显示ISP信息
+ *   - timeout: 请求超时时间
  * ============================================
  */
+
+// ==================== 参数读取 ====================
+
+/**
+ * 解析插件传入的参数
+ * 参数通过 $argument 传入，格式为逗号分隔的字符串
+ */
+function getArguments() {
+  const defaultArgs = {
+    fetchWebData: true,
+    showTimezone: true,
+    showISP: true,
+    timeout: 15
+  };
+  
+  try {
+    if (typeof $argument !== "undefined" && $argument) {
+      // $argument 格式: "true,true,true,15"
+      const args = $argument.split(",").map(s => s.trim());
+      
+      return {
+        fetchWebData: args[0] !== "false",
+        showTimezone: args[1] !== "false",
+        showISP: args[2] !== "false",
+        timeout: parseInt(args[3]) || 15
+      };
+    }
+  } catch (e) {
+    console.log(`参数解析失败: ${e.message}`);
+  }
+  
+  return defaultArgs;
+}
+
+const ARGS = getArguments();
 
 // ==================== 配置区 ====================
 
@@ -26,9 +63,12 @@ const CONFIG = {
   // 网页端点（提供 Bot 流量比等额外数据）
   WEB_URL: "https://ippure.com/",
   // 超时时间（毫秒）
-  TIMEOUT: 15000,
+  TIMEOUT: ARGS.timeout * 1000,
   // 是否同时请求网页获取额外数据（Bot流量比）
-  FETCH_WEB_DATA: true
+  FETCH_WEB_DATA: ARGS.fetchWebData,
+  // 显示选项
+  SHOW_TIMEZONE: ARGS.showTimezone,
+  SHOW_ISP: ARGS.showISP
 };
 
 // ==================== 国旗 Emoji 映射 ====================
@@ -115,7 +155,6 @@ function getScoreText(score) {
  * @returns {string} 十六进制颜色
  */
 function getBackgroundColor(score1, score2) {
-  // 取两个评分中的最大值作为判断依据
   const maxVal = Math.max(score1 || 0, score2 || 0);
   
   if (maxVal <= 10) return "#4A90D9";  // 蓝色（优秀）
@@ -143,7 +182,6 @@ function extractFromHtml(html) {
   if (!html) return result;
   
   // 1. 提取 IPPure 系数
-  // 可能的格式：IPPure系数 75%、IPPure系数：75%、IPPure系数\n75%
   const scorePatterns = [
     /IPPure\s*系数[：:\s]*(\d+(?:\.\d+)?)\s*%/i,
     /IPPure\s*Score[：:\s]*(\d+(?:\.\d+)?)\s*%/i,
@@ -159,8 +197,7 @@ function extractFromHtml(html) {
     }
   }
   
-  // 2. 提取 Bot 流量比（这是网页独有的数据）
-  // 可能的格式：Bot流量比 35%、bot 35%、Bot: 35%
+  // 2. 提取 Bot 流量比
   const botPatterns = [
     /[Bb]ot\s*流量比?[：:\s]*(\d+(?:\.\d+)?)\s*%/,
     /[Bb]ot\s*[Rr]atio[：:\s]*(\d+(?:\.\d+)?)\s*%/,
@@ -177,7 +214,6 @@ function extractFromHtml(html) {
   }
   
   // 3. 提取 IP 属性
-  // 可能的格式：IP属性 住宅、IP属性：机房IP、IP属性\n住宅IP
   const attrPatterns = [
     /IP\s*属性[：:\s]*([住宅机房数据中心]+)/,
     /IP\s*[Tt]ype[：:\s]*(Residential|Datacenter|Hosting)/i,
@@ -199,7 +235,6 @@ function extractFromHtml(html) {
   }
   
   // 4. 提取 IP 来源
-  // 可能的格式：IP来源 原生、IP来源：广播、IP来源\n原生IP
   const sourcePatterns = [
     /IP\s*来源[：:\s]*([原生广播本地]+)/,
     /IP\s*[Ss]ource[：:\s]*(Native|Broadcast|Anycast)/i,
@@ -236,7 +271,7 @@ function formatOutput(data) {
   const ipTypeEmoji = data.ipAttr === "住宅" ? "🏠" : "🏢";
   const ipSourceEmoji = data.ipSource === "广播" ? "📡" : "🎯";
   
-  // 复刻 Python 版输出格式：【纯净度Emoji + Bot比Emoji + IP属性 + IP来源】
+  // 摘要行
   const summaryLine = `【${pureEmoji}${botEmoji} ${data.ipAttr} ${data.ipSource}】`;
   
   // 数值显示
@@ -256,7 +291,7 @@ function formatOutput(data) {
     : (data.asOrganization || "未知");
   
   // 组装内容
-  const content = [
+  const contentLines = [
     `📍 ${data.ip || "N/A"}`,
     locationLine,
     ``,
@@ -265,12 +300,23 @@ function formatOutput(data) {
     `🎯 纯净度: ${pureText} (${scoreText})`,
     `🤖 Bot流量: ${botText}`,
     `${ipTypeEmoji} IP属性: ${data.ipAttr}`,
-    `${ipSourceEmoji} IP来源: ${data.ipSource}`,
-    `━━━━━━━━━━━━━━━`,
-    `🌐 ISP: ${ispLine}`,
-    `⏱️ 时区: ${data.timezone || "N/A"}`
-  ].join("\n");
+    `${ipSourceEmoji} IP来源: ${data.ipSource}`
+  ];
   
+  // 根据配置添加 ISP 和时区信息
+  if (CONFIG.SHOW_ISP || CONFIG.SHOW_TIMEZONE) {
+    contentLines.push(`━━━━━━━━━━━━━━━`);
+  }
+  
+  if (CONFIG.SHOW_ISP) {
+    contentLines.push(`🌐 ISP: ${ispLine}`);
+  }
+  
+  if (CONFIG.SHOW_TIMEZONE) {
+    contentLines.push(`⏱️ 时区: ${data.timezone || "N/A"}`);
+  }
+  
+  const content = contentLines.join("\n");
   const bgColor = getBackgroundColor(data.pureScore, data.botRatio);
   
   return {
@@ -292,6 +338,7 @@ function fetchFromAPI() {
   return new Promise((resolve, reject) => {
     const options = {
       url: CONFIG.API_URL,
+      timeout: CONFIG.TIMEOUT,
       headers: {
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
         "Accept": "application/json",
@@ -314,24 +361,15 @@ function fetchFromAPI() {
         const json = JSON.parse(data);
         
         resolve({
-          // 基础信息
           ip: json.ip || "N/A",
-          
-          // 纯净度评分
           pureScore: json.fraudScore ?? null,
-          
-          // IP 属性与来源
           ipAttr: json.isResidential ? "住宅" : "机房",
           ipSource: json.isBroadcast ? "广播" : "原生",
-          
-          // 地理位置
           country: json.country || "",
           countryCode: json.countryCode || "",
           region: json.region || "",
           city: json.city || "",
           timezone: json.timezone || "",
-          
-          // ISP 信息
           asn: json.asn || null,
           asOrganization: json.asOrganization || ""
         });
@@ -351,6 +389,7 @@ function fetchFromWeb() {
   return new Promise((resolve, reject) => {
     const options = {
       url: CONFIG.WEB_URL,
+      timeout: CONFIG.TIMEOUT,
       headers: {
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -377,36 +416,22 @@ function fetchFromWeb() {
 
 /**
  * 合并 API 数据和网页数据
- * API 数据为主，网页数据作为补充（特别是 Bot 流量比）
  * @param {object} apiData - API 返回的数据
  * @param {object} webData - 网页提取的数据
  * @returns {object} 合并后的数据
  */
 function mergeData(apiData, webData) {
   return {
-    // 基础信息（来自 API）
     ip: apiData.ip,
-    
-    // 纯净度评分：优先使用 API，网页作为备份
     pureScore: apiData.pureScore ?? webData.pureScore ?? null,
-    
-    // Bot 流量比：仅网页提供
     botRatio: webData.botRatio ?? null,
-    
-    // IP 属性：优先使用 API，网页作为备份
     ipAttr: apiData.ipAttr || webData.ipAttr || "未知",
-    
-    // IP 来源：优先使用 API，网页作为备份
     ipSource: apiData.ipSource || webData.ipSource || "未知",
-    
-    // 地理位置（仅来自 API）
     country: apiData.country,
     countryCode: apiData.countryCode,
     region: apiData.region,
     city: apiData.city,
     timezone: apiData.timezone,
-    
-    // ISP 信息（仅来自 API）
     asn: apiData.asn,
     asOrganization: apiData.asOrganization
   };
@@ -420,7 +445,7 @@ function mergeData(apiData, webData) {
     let webData = { pureScore: null, botRatio: null, ipAttr: null, ipSource: null };
     let errors = [];
     
-    // 1. 获取 API 数据（主要数据源）
+    // 1. 获取 API 数据
     try {
       apiData = await fetchFromAPI();
     } catch (e) {
@@ -428,7 +453,7 @@ function mergeData(apiData, webData) {
       console.log(`API 获取失败: ${e.message}`);
     }
     
-    // 2. 获取网页数据（补充数据源，主要用于获取 Bot 流量比）
+    // 2. 根据配置决定是否获取网页数据
     if (CONFIG.FETCH_WEB_DATA) {
       try {
         webData = await fetchFromWeb();
@@ -466,7 +491,7 @@ function mergeData(apiData, webData) {
     // 6. 格式化输出
     const output = formatOutput(mergedData);
     
-    // 7. 如果有错误但仍有数据，在内容中添加警告
+    // 7. 如果有错误但仍有数据，添加警告
     if (errors.length > 0 && (mergedData.pureScore !== null || mergedData.botRatio !== null)) {
       output.content += `\n\n⚠️ 部分数据源异常`;
     }
