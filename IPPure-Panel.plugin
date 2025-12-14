@@ -1,10 +1,18 @@
-#!name = IPPure IP 信息面板
-#!desc = 一站式显示 IP 地理位置、风险评分、网络类型
-#!author = 转换自 StashNetworks
-#!homepage = https://my.ippure.com
-#!icon = network.badge.shield.half.filled
+#!name = IPPure Panel
+#!desc = 显示当前出口 IP 的地理位置、欺诈评分和 IP 类型信息
+#!author = snove999
+#!homepage = https://github.com/snove999/IPPure-Panel
+#!icon = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
 #!version = 1.0.0
-[Panel]
-PanelName = IPPure-Info, script-name=ippure-info, update-interval=3600
+
 [Script]
-ippure-info = type=generic, timeout=10, script-path=https://raw.githubusercontent.com/snove999/IPPure-Panel/main/ippure-info.js, script-update-interval=86400
+# IP 地理位置信息
+generic script-path=https://raw.githubusercontent.com/snove999/IPPure-Panel/refs/heads/main/ippure-ip-info.js, timeout=10, tag=IP-Info, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
+
+# IP 欺诈风险评分
+generic script-path=https://raw.githubusercontent.com/snove999/IPPure-Panel/refs/heads/main/ippure-ip-fraud-score.js, timeout=10, tag=Fraud-Score, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Spell.png
+
+# IP 类型检测（住宅/原生）
+generic script-path=https://raw.githubusercontent.com/snove999/IPPure-Panel/refs/heads/main/ippure-ip-native-check.js, timeout=10, tag=IP-Type, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Server.png
+
+[MITM]
