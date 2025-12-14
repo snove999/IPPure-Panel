@@ -11,7 +11,7 @@
 
 // ==================== 配置 ====================
 
-const CF_WORKER_URL = "https://ippure-proxy.你的用户名.workers.dev/api/ippure";
+const CF_WORKER_URL = "https://ippure-proxy.snove999.workers.dev/api/ippure";
 const IP_CHECK_URL = "http://ip-api.com/json/?fields=query";  // 获取出口 IP
 const TIMEOUT = 15000;
 
