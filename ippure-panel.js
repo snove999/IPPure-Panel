@@ -1,18 +1,89 @@
 /*
  * Loon Generic Script - IPPure Panel
- * 集成显示：IP 地理位置、欺诈评分、IP 类型
+ * 转换自 ipcheck.py，使用 API 替代浏览器抓取
  * Author: snove999
- * Version: 1.0.0
+ * Version: 2.0.0
  */
 
-const url = "https://my.ippure.com/v1/info";
+const API_URL = "https://my.ippure.com/v1/info";
 
-$httpClient.get(url, (error, response, data) => {
+/**
+ * 根据百分比数值返回对应 Emoji
+ * @param {number|string} value - 百分比值（可带%）
+ * @returns {string} Emoji
+ */
+function getEmoji(value) {
+  let val;
+  
+  if (typeof value === "string") {
+    val = parseFloat(value.replace("%", ""));
+  } else if (typeof value === "number") {
+    val = value;
+  } else {
+    return "❓";
+  }
+  
+  if (isNaN(val)) return "❓";
+  
+  // 映射逻辑（与 Python 版本一致）：
+  // 0-10:   ⚪ 白色（最优）
+  // 10-30:  🟢 绿色（良好）
+  // 30-50:  🟡 黄色（一般）
+  // 50-70:  🟠 橙色（较差）
+  // 70-90:  🔴 红色（差）
+  // 90+:    ⚫ 黑色（最差）
+  if (val <= 10) return "⚪";
+  if (val <= 30) return "🟢";
+  if (val <= 50) return "🟡";
+  if (val <= 70) return "🟠";
+  if (val <= 90) return "🔴";
+  return "⚫";
+}
+
+/**
+ * 获取 IP 属性文本
+ * @param {boolean} isResidential - 是否为住宅 IP
+ * @returns {string}
+ */
+function getIpAttr(isResidential) {
+  return isResidential ? "住宅" : "机房";
+}
+
+/**
+ * 获取 IP 来源文本
+ * @param {boolean} isBroadcast - 是否为广播 IP
+ * @returns {string}
+ */
+function getIpSource(isBroadcast) {
+  return isBroadcast ? "广播" : "原生";
+}
+
+/**
+ * 计算背景颜色
+ * @param {number} pureScore - IPPure 系数
+ * @param {number} botRatio - Bot 流量比
+ * @returns {string} 十六进制颜色
+ */
+function getBackgroundColor(pureScore, botRatio) {
+  // 取两者中较差的值作为整体评估
+  const maxVal = Math.max(pureScore || 0, botRatio || 0);
+  
+  if (maxVal <= 10) return "#FFFFFF";  // 白色
+  if (maxVal <= 30) return "#88A788";  // 绿色
+  if (maxVal <= 50) return "#D4A017";  // 黄色
+  if (maxVal <= 70) return "#E67E22";  // 橙色
+  if (maxVal <= 90) return "#CC4444";  // 红色
+  return "#2C2C2C";                     // 黑色
+}
+
+// ========== 主逻辑 ==========
+
+$httpClient.get(API_URL, (error, response, data) => {
   // 网络错误处理
   if (error || !data) {
     $done({
       title: "IPPure Panel",
-      content: "Network Error",
+      content: "❌ Network Error",
       backgroundColor: "#CC4444",
     });
     return;
@@ -25,7 +96,7 @@ $httpClient.get(url, (error, response, data) => {
   } catch (e) {
     $done({
       title: "IPPure Panel",
-      content: "Invalid JSON",
+      content: "❌ Invalid JSON",
       backgroundColor: "#CC4444",
     });
     return;
@@ -33,70 +104,52 @@ $httpClient.get(url, (error, response, data) => {
 
   // ========== 数据提取 ==========
   
-  // IP 信息
   const ip = json.ip || "N/A";
-  const country = json.country || "N/A";
-  const region = json.region || "";
-  const city = json.city || "";
-  const isp = json.isp || "N/A";
-
-  // 欺诈评分
-  const fraudScore = json.fraudScore ?? "N/A";
-
-  // IP 类型
-  const isRes = Boolean(json.isResidential);
-  const isBrd = Boolean(json.isBroadcast);
-  const resText = isRes ? "Residential" : "DC";
-  const brdText = isBrd ? "Broadcast" : "Native";
-
-  // ========== 位置信息组装 ==========
   
-  let location = country;
-  if (region && region !== city) {
-    location += ` • ${region}`;
-  }
-  if (city) {
-    location += ` • ${city}`;
-  }
-
-  // ========== 背景颜色计算 ==========
+  // IPPure 系数（API 字段名可能是 pureScore 或 fraudScore）
+  // 注意：fraudScore 是欺诈评分，pureScore 是纯净度，逻辑可能相反
+  // 根据实际 API 返回调整
+  const pureScore = json.pureScore ?? json.fraudScore ?? null;
+  const pureEmoji = pureScore !== null ? getEmoji(pureScore) : "❓";
   
-  // 综合评估逻辑：
-  // 1. 欺诈评分权重最高
-  // 2. IP 类型次之
+  // 人机流量比（Bot 比例）
+  const botRatio = json.botRatio ?? json.botScore ?? null;
+  const botEmoji = botRatio !== null ? getEmoji(botRatio) : "❓";
   
-  let color = "#88A788"; // 默认绿色（优）
+  // IP 属性
+  const isResidential = Boolean(json.isResidential);
+  const ipAttr = getIpAttr(isResidential);
+  
+  // IP 来源
+  const isBroadcast = Boolean(json.isBroadcast);
+  const ipSource = getIpSource(isBroadcast);
 
-  // 欺诈评分判定
-  if (typeof fraudScore === "number") {
-    if (fraudScore >= 70) {
-      color = "#CC4444"; // 红色（高风险）
-    } else if (fraudScore >= 40) {
-      color = "#D4A017"; // 黄色（中风险）
-    }
-  }
-
-  // IP 类型判定（仅在欺诈评分为低风险时生效）
-  if (color === "#88A788") {
-    if (!isRes && isBrd) {
-      color = "#CC4444"; // 红色（DC + 广播）
-    } else if ((isRes && isBrd) || (!isRes && !isBrd)) {
-      color = "#D4A017"; // 黄色（中等）
-    }
-  }
-
-  // ========== 输出内容 ==========
+  // ========== 输出格式 ==========
+  
+  // 复刻 Python 版输出：【IPPure系数Emoji + Bot比例Emoji + IP属性 + IP来源】
+  // 例如：【⚪🟡 机房 广播】
+  
+  const summaryLine = `【${pureEmoji}${botEmoji} ${ipAttr} ${ipSource}】`;
+  
+  // 详细信息
+  const pureText = pureScore !== null ? `${pureScore}%` : "N/A";
+  const botText = botRatio !== null ? `${botRatio}%` : "N/A";
   
   const content = [
     `📍 ${ip}`,
-    `🌐 ${location}`,
-    `🏢 ${isp}`,
-    `⚠️ Fraud: ${fraudScore} | 🏷️ ${resText} • ${brdText}`,
+    summaryLine,
+    `━━━━━━━━━━━━━━━`,
+    `🎯 IPPure系数: ${pureText}`,
+    `🤖 Bot流量比: ${botText}`,
+    `🏷️ IP属性: ${ipAttr}`,
+    `📡 IP来源: ${ipSource}`,
   ].join("\n");
+
+  const bgColor = getBackgroundColor(pureScore, botRatio);
 
   $done({
     title: "IPPure Panel",
     content: content,
-    backgroundColor: color,
+    backgroundColor: bgColor,
   });
 });
