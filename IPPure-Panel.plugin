@@ -1,0 +1,10 @@
+#!name = IPPure IP 信息面板
+#!desc = 一站式显示 IP 地理位置、风险评分、网络类型
+#!author = 转换自 StashNetworks
+#!homepage = https://my.ippure.com
+#!icon = network.badge.shield.half.filled
+#!version = 1.0.0
+[Panel]
+PanelName = IPPure-Info, script-name=ippure-info, update-interval=3600
+[Script]
+ippure-info = type=generic, timeout=10, script-path=https://raw.githubusercontent.com/snove999/IPPure-Panel/main/ippure-info.js, script-update-interval=86400
