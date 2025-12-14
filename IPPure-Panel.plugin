@@ -1,11 +1,20 @@
 #!name = IPPure Panel
-#!desc = 集成显示当前出口 IP 的地理位置、欺诈评分和 IP 类型
+#!desc = IP 纯净度检测面板，显示当前出口 IP 的纯净度评分、Bot流量比、IP属性、地理位置及 ISP 信息。数据源：my.ippure.com API + ippure.com 网页解析
 #!author = snove999
 #!homepage = https://github.com/snove999/IPPure-Panel
 #!icon = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
-#!version = 1.0.0
+#!system = iOS,iPadOS,macOS
+#!system_version = 15
+#!loon_version = 3.2.1(733)
+#!tag = 网络检测,IP查询,面板
+
+[Argument]
+fetchWebData = switch,true,tag=获取网页数据,desc=开启后会额外请求网页获取Bot流量比数据（可能较慢）
+showTimezone = switch,true,tag=显示时区,desc=是否在面板中显示时区信息
+showISP = switch,true,tag=显示ISP信息,desc=是否在面板中显示 ISP/ASN 信息
+timeout = select,"15","10","20","30",tag=请求超时,desc=API和网页请求的超时时间（秒）
 
 [Script]
-generic script-path=https://raw.githubusercontent.com/snove999/IPPure-Panel/main/ippure-panel.js, timeout=10, tag=IPPure-Panel, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
+generic script-path = https://raw.githubusercontent.com/snove999/IPPure-Panel/main/ippure-panel.js, timeout=20, tag=IPPure-Panel, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png, argument=[{fetchWebData},{showTimezone},{showISP},{timeout}]
 
 [MITM]
