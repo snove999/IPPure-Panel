@@ -6,6 +6,6 @@
 #!version = 1.0.0
 
 [Script]
-generic script-path=https://raw.githubusercontent.com/snove999/IPPure-Panel/main/loon/ippure-panel.js, timeout=10, tag=IPPure-Panel, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
+generic script-path=https://raw.githubusercontent.com/snove999/IPPure-Panel/main/ippure-panel.js, timeout=10, tag=IPPure-Panel, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
 
 [MITM]
