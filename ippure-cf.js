@@ -12,7 +12,7 @@
 // ==================== 配置 ====================
 
 // 替换为你的 Worker 地址
-const CF_WORKER_URL = "https://ippure-proxy.你的用户名.workers.dev/api/ippure";
+const CF_WORKER_URL = "https://ippure-proxy.snove999.workers.dev/api/ippure";
 
 const TIMEOUT = 15000;
 
