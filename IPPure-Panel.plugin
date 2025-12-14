@@ -14,7 +14,7 @@ showISP = switch,true,tag=显示ISP信息,desc=是否在面板中显示 ISP/ASN 
 timeout = select,"15","10","20","30",tag=请求超时,desc=API请求的超时时间（秒）
 
 [Script]
-generic script-path = https://raw.githubusercontent.com/snove999/IPPure-Panel/main/ippure-panel.js, timeout=30, tag=IPPure-Panel, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png, argument=[{showTimezone},{showISP},{timeout}]
+generic script-path = https://raw.githubusercontent.com/snove999/IPPure-Panel/main/ippure.js, timeout=30, tag=IPPure-Panel, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png, argument=[{showTimezone},{showISP},{timeout}]
 
 [MITM]
 
