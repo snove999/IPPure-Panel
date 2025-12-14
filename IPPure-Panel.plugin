@@ -1,18 +1,11 @@
 #!name = IPPure Panel
-#!desc = 显示当前出口 IP 的地理位置、欺诈评分和 IP 类型信息
+#!desc = 集成显示当前出口 IP 的地理位置、欺诈评分和 IP 类型
 #!author = snove999
 #!homepage = https://github.com/snove999/IPPure-Panel
 #!icon = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
 #!version = 1.0.0
 
 [Script]
-# IP 地理位置信息
-generic script-path=https://raw.githubusercontent.com/snove999/IPPure-Panel/refs/heads/main/ippure-ip-info.js, timeout=10, tag=IP-Info, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
-
-# IP 欺诈风险评分
-generic script-path=https://raw.githubusercontent.com/snove999/IPPure-Panel/refs/heads/main/ippure-ip-fraud-score.js, timeout=10, tag=Fraud-Score, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Spell.png
-
-# IP 类型检测（住宅/原生）
-generic script-path=https://raw.githubusercontent.com/snove999/IPPure-Panel/refs/heads/main/ippure-ip-native-check.js, timeout=10, tag=IP-Type, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Server.png
+generic script-path=https://raw.githubusercontent.com/snove999/IPPure-Panel/main/loon/ippure-panel.js, timeout=10, tag=IPPure-Panel, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
 
 [MITM]
